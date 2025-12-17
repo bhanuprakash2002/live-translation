@@ -36,7 +36,7 @@ class VoiceProcessor {
         this.lastInterim = "";        // Backup: latest interim result
         this.lastSentence = "";       // Last processed sentence
         this.sentenceTimer = null;    // Timer to finalize sentence
-        this.SENTENCE_TIMEOUT = 3000; // 3 seconds of silence = end of sentence
+        this.SENTENCE_TIMEOUT = 1500; // 1.5 seconds of silence = end of sentence (faster response)
 
         // Processing lock
         this.isProcessing = false;
@@ -306,14 +306,59 @@ class VoiceProcessor {
     }
 
     async _tts(text, lang) {
+        // Comprehensive language support with Neural2 where available
         const voices = {
+            // Major World Languages
             en: { languageCode: "en-US", name: "en-US-Neural2-J" },
             es: { languageCode: "es-ES", name: "es-ES-Neural2-A" },
+            fr: { languageCode: "fr-FR", name: "fr-FR-Neural2-A" },
+            de: { languageCode: "de-DE", name: "de-DE-Neural2-A" },
+            pt: { languageCode: "pt-BR", name: "pt-BR-Neural2-A" },
+            it: { languageCode: "it-IT", name: "it-IT-Neural2-A" },
+            ru: { languageCode: "ru-RU", name: "ru-RU-Standard-A" },
+
+            // Asian Languages
+            zh: { languageCode: "cmn-CN", name: "cmn-CN-Standard-A" },
+            ja: { languageCode: "ja-JP", name: "ja-JP-Neural2-B" },
+            ko: { languageCode: "ko-KR", name: "ko-KR-Neural2-A" },
+            vi: { languageCode: "vi-VN", name: "vi-VN-Neural2-A" },
+            th: { languageCode: "th-TH", name: "th-TH-Neural2-C" },
+            id: { languageCode: "id-ID", name: "id-ID-Standard-A" },
+            ms: { languageCode: "ms-MY", name: "ms-MY-Standard-A" },
+            fil: { languageCode: "fil-PH", name: "fil-PH-Neural2-A" },
+
+            // Indian Languages
             hi: { languageCode: "hi-IN", name: "hi-IN-Neural2-A" },
             te: { languageCode: "te-IN", name: "te-IN-Standard-A" },
             ta: { languageCode: "ta-IN", name: "ta-IN-Standard-A" },
-            fr: { languageCode: "fr-FR", name: "fr-FR-Neural2-A" },
-            de: { languageCode: "de-DE", name: "de-DE-Neural2-A" }
+            bn: { languageCode: "bn-IN", name: "bn-IN-Standard-A" },
+            gu: { languageCode: "gu-IN", name: "gu-IN-Standard-A" },
+            kn: { languageCode: "kn-IN", name: "kn-IN-Standard-A" },
+            ml: { languageCode: "ml-IN", name: "ml-IN-Standard-A" },
+            mr: { languageCode: "mr-IN", name: "mr-IN-Standard-A" },
+            pa: { languageCode: "pa-IN", name: "pa-IN-Standard-A" },
+
+            // Middle Eastern Languages
+            ar: { languageCode: "ar-XA", name: "ar-XA-Standard-A" },
+            he: { languageCode: "he-IL", name: "he-IL-Standard-A" },
+            tr: { languageCode: "tr-TR", name: "tr-TR-Neural2-A" },
+            fa: { languageCode: "fa-IR", name: "fa-IR-Standard-A" },
+
+            // European Languages
+            nl: { languageCode: "nl-NL", name: "nl-NL-Neural2-A" },
+            pl: { languageCode: "pl-PL", name: "pl-PL-Neural2-A" },
+            sv: { languageCode: "sv-SE", name: "sv-SE-Neural2-A" },
+            da: { languageCode: "da-DK", name: "da-DK-Neural2-D" },
+            no: { languageCode: "nb-NO", name: "nb-NO-Neural2-A" },
+            fi: { languageCode: "fi-FI", name: "fi-FI-Neural2-A" },
+            el: { languageCode: "el-GR", name: "el-GR-Neural2-A" },
+            cs: { languageCode: "cs-CZ", name: "cs-CZ-Standard-A" },
+            ro: { languageCode: "ro-RO", name: "ro-RO-Standard-A" },
+            hu: { languageCode: "hu-HU", name: "hu-HU-Standard-A" },
+            uk: { languageCode: "uk-UA", name: "uk-UA-Standard-A" },
+
+            // Other
+            af: { languageCode: "af-ZA", name: "af-ZA-Standard-A" }
         };
 
         const base = (lang || "en").split("-")[0];
