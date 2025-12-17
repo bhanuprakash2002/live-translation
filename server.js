@@ -1,5 +1,9 @@
 // server.js - Express + WebSocket Server for Live Translation
 require("dotenv").config();
+
+// Force immediate log output (fixes Render log buffering)
+if (process.stdout._handle) process.stdout._handle.setBlocking(true);
+if (process.stderr._handle) process.stderr._handle.setBlocking(true);
 const express = require("express");
 const { v4: uuidv4 } = require("uuid");
 const WebSocket = require("ws");
