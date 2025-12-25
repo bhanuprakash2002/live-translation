@@ -60,7 +60,7 @@ app.post("/create-room", (req, res) => {
     }
 });
 
-// Join an existing room
+// Join an existing room (allows re-joining)
 app.post("/join-room", (req, res) => {
     try {
         const { roomId, participantLanguage, participantName } = req.body;
@@ -70,10 +70,7 @@ app.post("/join-room", (req, res) => {
             return res.status(404).json({ error: "Room not found" });
         }
 
-        if (session.participantLanguage) {
-            return res.status(400).json({ error: "Room is full" });
-        }
-
+        // Allow re-joining - update participant info
         session.participantLanguage = participantLanguage;
         session.participantName = participantName;
         activeSessions.set(roomId, session);
@@ -108,21 +105,33 @@ app.get("/room-info", (req, res) => {
     });
 });
 
-// Leave room
+// Leave room (allows re-joining - only clears user's connection)
 app.post("/leave-room", (req, res) => {
     try {
-        const { roomId } = req.body;
+        const { roomId, userType } = req.body;
         const session = activeSessions.get(roomId);
 
         if (session) {
-            if (session.callerConnection?.ws) {
-                session.callerConnection.ws.close();
+            if (userType === "caller") {
+                // Creator leaving - close all connections and delete room
+                if (session.callerConnection?.ws) {
+                    session.callerConnection.ws.close();
+                }
+                if (session.receiverConnection?.ws) {
+                    session.receiverConnection.ws.close();
+                }
+                activeSessions.delete(roomId);
+                console.log("🗑️ Room deleted (creator left):", roomId);
+            } else {
+                // Participant leaving - just clear their connection, keep room alive
+                if (session.receiverConnection?.ws) {
+                    session.receiverConnection.ws.close();
+                }
+                session.receiverConnection = null;
+                session.participantLanguage = null;
+                session.participantName = null;
+                console.log("👋 Participant left room (room still active):", roomId);
             }
-            if (session.receiverConnection?.ws) {
-                session.receiverConnection.ws.close();
-            }
-            activeSessions.delete(roomId);
-            console.log("🗑️ Room deleted:", roomId);
         }
 
         res.json({ success: true });
