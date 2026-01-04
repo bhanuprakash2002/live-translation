@@ -56,6 +56,8 @@ class VoiceProcessor {
                 console.log(`✅ ${this.userType} connected in ${this.roomId} (${this.myLanguage})`);
                 this._registerConnection();
                 this._notifyPartner("user_joined", { name: this.myName, language: this.myLanguage });
+                // Pre-warm STT stream to reduce initial latency
+                this._startStream();
                 break;
             case "audio":
                 await this._processAudio(msg.audio);
