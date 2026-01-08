@@ -9,6 +9,10 @@ const { v4: uuidv4 } = require("uuid");
 const WebSocket = require("ws");
 const path = require("path");
 
+// Twilio Video Token Generation
+const { AccessToken } = require('twilio').jwt;
+const { VideoGrant } = AccessToken;
+
 const app = express();
 app.use(express.json());
 
@@ -25,13 +29,50 @@ app.use((req, res, next) => {
 
 app.use(express.static(path.join(__dirname, "public")));
 
-
 // Active translation sessions
 const activeSessions = new Map();
 
 // Health check
 app.get("/health", (req, res) => {
     res.json({ status: "ok", activeRooms: activeSessions.size });
+});
+
+// =====================================================
+// TWILIO VIDEO TOKEN
+// =====================================================
+app.post("/api/video-token", (req, res) => {
+    try {
+        const { identity, roomName } = req.body;
+        
+        if (!identity || !roomName) {
+            return res.status(400).json({ error: "Missing identity or roomName" });
+        }
+
+        const twilioAccountSid = process.env.TWILIO_ACCOUNT_SID;
+        const twilioApiKeySid = process.env.TWILIO_API_KEY_SID;
+        const twilioApiSecret = process.env.TWILIO_API_SECRET;
+
+        if (!twilioAccountSid || !twilioApiKeySid || !twilioApiSecret) {
+            console.error("Missing Twilio credentials");
+            return res.status(500).json({ error: "Twilio not configured" });
+        }
+
+        const token = new AccessToken(
+            twilioAccountSid,
+            twilioApiKeySid,
+            twilioApiSecret,
+            { identity }
+        );
+
+        const videoGrant = new VideoGrant({ room: roomName });
+        token.addGrant(videoGrant);
+
+        console.log("✅ Video token generated for:", identity, "in room:", roomName);
+        res.json({ token: token.toJwt() });
+    } catch (error) {
+        console.error("Video token error:", error);
+        res.status(500).json({ error: "Failed to generate video token" });
+    }
 });
 
 // Create a new room
