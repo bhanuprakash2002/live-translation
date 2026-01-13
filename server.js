@@ -43,7 +43,7 @@ app.get("/health", (req, res) => {
 app.post("/api/video-token", (req, res) => {
     try {
         const { identity, roomName } = req.body;
-        
+
         if (!identity || !roomName) {
             return res.status(400).json({ error: "Missing identity or roomName" });
         }
