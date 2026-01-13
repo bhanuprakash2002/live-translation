@@ -77,12 +77,16 @@ class VoiceProcessor {
     }
 
     async _processAudio(base64Audio) {
-        if (!this.myLanguage) return;
+        if (!this.myLanguage) {
+            console.log("⚠️ No language set, skipping audio processing");
+            return;
+        }
 
         const buffer = Buffer.from(base64Audio, "base64");
 
         // Ensure stream is running
         if (!this.isStreaming) {
+            console.log(`🔄 Stream not running for ${this.userType}, starting...`);
             await this._startStream();
         }
 
@@ -98,18 +102,24 @@ class VoiceProcessor {
             try {
                 this.recognizeStream.write(buffer);
             } catch (e) {
-                console.error("Write error:", e.message);
+                console.error("❌ Write error:", e.message);
                 await this._restartStream();
             }
+        } else {
+            console.log("⚠️ No recognize stream available, cannot write audio");
         }
 
         // DON'T reset timer here - only reset when we get actual STT results
     }
 
     async _startStream() {
-        if (this.isStreaming) return;
+        if (this.isStreaming) {
+            console.log("⚠️ Stream already running, skipping start");
+            return;
+        }
 
         const langCode = this._getLangCode(this.myLanguage);
+        console.log(`🎤 Starting STT stream for ${this.userType} in ${this.roomId} with language: ${langCode}`);
 
         try {
             this.recognizeStream = this.speechClient
@@ -125,18 +135,22 @@ class VoiceProcessor {
                     interimResults: true,
                     singleUtterance: false
                 })
-                .on("data", this._handleSTTData)
+                .on("data", (response) => {
+                    console.log(`📩 STT data received for ${this.userType}:`, JSON.stringify(response.results?.[0]?.alternatives?.[0]?.transcript || "empty").substring(0, 50));
+                    this._handleSTTData(response);
+                })
                 .on("error", this._handleSTTError)
                 .on("end", () => {
+                    console.log(`🔚 STT stream ended for ${this.userType}`);
                     this.isStreaming = false;
                     this.recognizeStream = null;
                 });
 
             this.isStreaming = true;
             this.streamCreatedAt = Date.now();
-            console.log(`🎤 Stream started: ${langCode}`);
+            console.log(`✅ STT Stream started successfully: ${langCode}`);
         } catch (e) {
-            console.error("Failed to start stream:", e.message);
+            console.error("❌ Failed to start stream:", e.message);
             this.isStreaming = false;
         }
     }
