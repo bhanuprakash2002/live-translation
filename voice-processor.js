@@ -56,6 +56,14 @@ class VoiceProcessor {
                 console.log(`✅ ${this.userType} connected in ${this.roomId} (${this.myLanguage})`);
                 this._registerConnection();
                 this._notifyPartner("user_joined", { name: this.myName, language: this.myLanguage });
+                // Pre-warm STT stream after a short delay to reduce cold-start latency
+                // This loads the language model (especially helpful for non-English like Telugu)
+                setTimeout(() => {
+                    if (!this.isStreaming) {
+                        console.log(`🔥 Pre-warming STT stream for ${this.myLanguage}...`);
+                        this._startStream();
+                    }
+                }, 500);
                 break;
             case "audio":
                 await this._processAudio(msg.audio);
