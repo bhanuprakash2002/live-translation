@@ -366,16 +366,16 @@ class VoiceProcessor {
             ms: { languageCode: "ms-MY", name: "ms-MY-Standard-A" },
             fil: { languageCode: "fil-PH", name: "fil-PH-Neural2-A" },
 
-            // Indian Languages (Wavenet for speed + quality)
+            // Indian Languages (Neural2 for Hindi, Standard for others)
             hi: { languageCode: "hi-IN", name: "hi-IN-Neural2-A" },
-            te: { languageCode: "te-IN", name: "te-IN-Wavenet-A" },
-            ta: { languageCode: "ta-IN", name: "ta-IN-Wavenet-A" },
-            bn: { languageCode: "bn-IN", name: "bn-IN-Wavenet-A" },
-            gu: { languageCode: "gu-IN", name: "gu-IN-Wavenet-A" },
-            kn: { languageCode: "kn-IN", name: "kn-IN-Wavenet-A" },
-            ml: { languageCode: "ml-IN", name: "ml-IN-Wavenet-A" },
-            mr: { languageCode: "mr-IN", name: "mr-IN-Wavenet-A" },
-            pa: { languageCode: "pa-IN", name: "pa-IN-Wavenet-A" },
+            te: { languageCode: "te-IN", name: "te-IN-Standard-A" },
+            ta: { languageCode: "ta-IN", name: "ta-IN-Standard-A" },
+            bn: { languageCode: "bn-IN", name: "bn-IN-Standard-A" },
+            gu: { languageCode: "gu-IN", name: "gu-IN-Standard-A" },
+            kn: { languageCode: "kn-IN", name: "kn-IN-Standard-A" },
+            ml: { languageCode: "ml-IN", name: "ml-IN-Standard-A" },
+            mr: { languageCode: "mr-IN", name: "mr-IN-Standard-A" },
+            pa: { languageCode: "pa-IN", name: "pa-IN-Standard-A" },
 
             // Middle Eastern Languages
             ar: { languageCode: "ar-XA", name: "ar-XA-Standard-A" },
@@ -404,8 +404,7 @@ class VoiceProcessor {
         const voice = voices[base] || { languageCode: lang, ssmlGender: "NEUTRAL" };
 
         // Check TTS cache first
-        const base2 = (lang || "en").split("-")[0];
-        const ttsCacheKey = `${text}|${base2}`;
+        const ttsCacheKey = `${text}|${base}`;
         if (this.ttsCache.has(ttsCacheKey)) {
             console.log(`💾 TTS cache hit`);
             return this.ttsCache.get(ttsCacheKey);
@@ -428,7 +427,19 @@ class VoiceProcessor {
             return response.audioContent;
         } catch (e) {
             console.error("TTS error:", e.message);
-            return null;
+            // Fallback: retry with just languageCode + NEUTRAL gender (no specific voice name)
+            try {
+                console.log(`🔄 TTS fallback for ${base}...`);
+                const [fallback] = await this.ttsClient.synthesizeSpeech({
+                    input: { text },
+                    voice: { languageCode: voice.languageCode || lang, ssmlGender: "NEUTRAL" },
+                    audioConfig: { audioEncoding: "LINEAR16", sampleRateHertz: 48000, speakingRate: 1.15 }
+                });
+                return fallback.audioContent;
+            } catch (e2) {
+                console.error("TTS fallback error:", e2.message);
+                return null;
+            }
         }
     }
 
