@@ -36,10 +36,16 @@ class VoiceProcessor {
         this.lastInterim = "";        // Backup: latest interim result
         this.lastSentence = "";       // Last processed sentence
         this.sentenceTimer = null;    // Timer to finalize sentence
-        this.SENTENCE_TIMEOUT = 1500; // 1.5 seconds of silence = end of sentence (faster response)
+        this.SENTENCE_TIMEOUT = 1000; // 1s of silence = end of sentence (was 1.5s)
 
         // Processing lock
         this.isProcessing = false;
+
+        // Caches for translation & TTS (avoid redundant API calls)
+        this.translationCache = new Map(); // key: "text|from|to" → translated text
+        this.ttsCache = new Map();         // key: "text|lang" → audio buffer
+        this.MAX_TRANSLATION_CACHE = 100;
+        this.MAX_TTS_CACHE = 50;
 
         // Bind handlers
         this._handleSTTData = this._handleSTTData.bind(this);
@@ -117,6 +123,10 @@ class VoiceProcessor {
 
         const langCode = this._getLangCode(this.myLanguage);
 
+        // Use faster model for Indian languages (lower cold-start latency)
+        const indianCodes = ["hi-IN", "te-IN", "ta-IN", "bn-IN", "gu-IN", "kn-IN", "ml-IN", "mr-IN", "pa-IN"];
+        const model = indianCodes.includes(langCode) ? "latest_short" : "latest_long";
+
         try {
             this.recognizeStream = this.speechClient
                 .streamingRecognize({
@@ -125,7 +135,7 @@ class VoiceProcessor {
                         sampleRateHertz: 48000,
                         languageCode: langCode,
                         enableAutomaticPunctuation: true,
-                        model: "latest_long",
+                        model: model,
                         useEnhanced: true
                     },
                     interimResults: true,
@@ -140,7 +150,7 @@ class VoiceProcessor {
 
             this.isStreaming = true;
             this.streamCreatedAt = Date.now();
-            console.log(`🎤 Stream started: ${langCode}`);
+            console.log(`🎤 Stream started: ${langCode} (model: ${model})`);
         } catch (e) {
             console.error("Failed to start stream:", e.message);
             this.isStreaming = false;
@@ -265,11 +275,12 @@ class VoiceProcessor {
                 return;
             }
 
-            // Translate
+            // Step 1: Translate (with cache)
+            const t0 = Date.now();
             const translated = await this._translate(text, this.myLanguage, partner.myLanguage);
-            console.log(`🌐 [${Date.now() - start}ms] "${text}" → "${translated}"`);
+            const translateMs = Date.now() - t0;
 
-            // Send to both users
+            // Send translation text to both users immediately (don't wait for TTS)
             const data = {
                 event: "translation",
                 originalText: text,
@@ -281,8 +292,11 @@ class VoiceProcessor {
             this._sendToUI(data);
             partner._sendToUI(data);
 
-            // Generate TTS
+            // Step 2: Generate TTS (with cache)
+            const t1 = Date.now();
             const audio = await this._tts(translated, partner.myLanguage);
+            const ttsMs = Date.now() - t1;
+
             if (audio && partner.ws?.readyState === 1) {
                 const wav = this._toWav(audio, 48000);
                 partner.ws.send(JSON.stringify({
@@ -290,8 +304,10 @@ class VoiceProcessor {
                     audio: wav.toString("base64"),
                     format: "wav"
                 }));
-                console.log(`🔊 [${Date.now() - start}ms] TTS sent to partner`);
             }
+
+            const totalMs = Date.now() - start;
+            console.log(`⏱️ Translate: ${translateMs}ms | TTS: ${ttsMs}ms | Total: ${totalMs}ms | "${text}" → "${translated}"`);
         } catch (e) {
             console.error("Translation error:", e.message);
         } finally {
@@ -304,8 +320,23 @@ class VoiceProcessor {
         const toLang = (to || "en").split("-")[0];
         if (fromLang === toLang) return text;
 
+        // Check cache first
+        const cacheKey = `${text}|${fromLang}|${toLang}`;
+        if (this.translationCache.has(cacheKey)) {
+            console.log(`💾 Translation cache hit`);
+            return this.translationCache.get(cacheKey);
+        }
+
         try {
             const [result] = await this.translateClient.translate(text, { from: fromLang, to: toLang });
+
+            // Store in cache (evict oldest if full)
+            if (this.translationCache.size >= this.MAX_TRANSLATION_CACHE) {
+                const oldest = this.translationCache.keys().next().value;
+                this.translationCache.delete(oldest);
+            }
+            this.translationCache.set(cacheKey, result);
+
             return result;
         } catch (e) {
             console.error("Translate error:", e.message);
@@ -335,16 +366,16 @@ class VoiceProcessor {
             ms: { languageCode: "ms-MY", name: "ms-MY-Standard-A" },
             fil: { languageCode: "fil-PH", name: "fil-PH-Neural2-A" },
 
-            // Indian Languages
+            // Indian Languages (Wavenet for speed + quality)
             hi: { languageCode: "hi-IN", name: "hi-IN-Neural2-A" },
-            te: { languageCode: "te-IN", name: "te-IN-Standard-A" },
-            ta: { languageCode: "ta-IN", name: "ta-IN-Standard-A" },
-            bn: { languageCode: "bn-IN", name: "bn-IN-Standard-A" },
-            gu: { languageCode: "gu-IN", name: "gu-IN-Standard-A" },
-            kn: { languageCode: "kn-IN", name: "kn-IN-Standard-A" },
-            ml: { languageCode: "ml-IN", name: "ml-IN-Standard-A" },
-            mr: { languageCode: "mr-IN", name: "mr-IN-Standard-A" },
-            pa: { languageCode: "pa-IN", name: "pa-IN-Standard-A" },
+            te: { languageCode: "te-IN", name: "te-IN-Wavenet-A" },
+            ta: { languageCode: "ta-IN", name: "ta-IN-Wavenet-A" },
+            bn: { languageCode: "bn-IN", name: "bn-IN-Wavenet-A" },
+            gu: { languageCode: "gu-IN", name: "gu-IN-Wavenet-A" },
+            kn: { languageCode: "kn-IN", name: "kn-IN-Wavenet-A" },
+            ml: { languageCode: "ml-IN", name: "ml-IN-Wavenet-A" },
+            mr: { languageCode: "mr-IN", name: "mr-IN-Wavenet-A" },
+            pa: { languageCode: "pa-IN", name: "pa-IN-Wavenet-A" },
 
             // Middle Eastern Languages
             ar: { languageCode: "ar-XA", name: "ar-XA-Standard-A" },
@@ -372,12 +403,28 @@ class VoiceProcessor {
         const base = (lang || "en").split("-")[0];
         const voice = voices[base] || { languageCode: lang, ssmlGender: "NEUTRAL" };
 
+        // Check TTS cache first
+        const base2 = (lang || "en").split("-")[0];
+        const ttsCacheKey = `${text}|${base2}`;
+        if (this.ttsCache.has(ttsCacheKey)) {
+            console.log(`💾 TTS cache hit`);
+            return this.ttsCache.get(ttsCacheKey);
+        }
+
         try {
             const [response] = await this.ttsClient.synthesizeSpeech({
                 input: { text },
                 voice,
-                audioConfig: { audioEncoding: "LINEAR16", sampleRateHertz: 48000, speakingRate: 1.1 }
+                audioConfig: { audioEncoding: "LINEAR16", sampleRateHertz: 48000, speakingRate: 1.15 }
             });
+
+            // Store in cache (evict oldest if full)
+            if (this.ttsCache.size >= this.MAX_TTS_CACHE) {
+                const oldest = this.ttsCache.keys().next().value;
+                this.ttsCache.delete(oldest);
+            }
+            this.ttsCache.set(ttsCacheKey, response.audioContent);
+
             return response.audioContent;
         } catch (e) {
             console.error("TTS error:", e.message);
