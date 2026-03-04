@@ -62,14 +62,19 @@ class VoiceProcessor {
                 console.log(`✅ ${this.userType} connected in ${this.roomId} (${this.myLanguage})`);
                 this._registerConnection();
                 this._notifyPartner("user_joined", { name: this.myName, language: this.myLanguage });
-                // Pre-warm STT stream after a short delay to reduce cold-start latency
-                // This loads the language model (especially helpful for non-English like Telugu)
-                setTimeout(() => {
-                    if (!this.isStreaming) {
-                        console.log(`🔥 Pre-warming STT stream for ${this.myLanguage}...`);
-                        this._startStream();
-                    }
-                }, 500);
+                // Pre-warm STT stream IMMEDIATELY and send silent audio to force model load
+                // This is critical for Indian languages (Telugu, Hindi, etc.) which have slow cold-starts
+                if (!this.isStreaming) {
+                    console.log(`🔥 Pre-warming STT stream for ${this.myLanguage}...`);
+                    this._startStream().then(() => {
+                        // Send 100ms of silence to force the model to fully initialize
+                        if (this.recognizeStream) {
+                            const silence = Buffer.alloc(9600); // 100ms at 48kHz, 16-bit mono
+                            try { this.recognizeStream.write(silence); } catch (e) { }
+                            console.log(`🔥 Warm-up audio sent for ${this.myLanguage}`);
+                        }
+                    });
+                }
                 break;
             case "audio":
                 await this._processAudio(msg.audio);
